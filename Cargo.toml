@@ -6,6 +6,7 @@ repository = "https://github.com/Speedy37/tree-map-rs"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 keywords = ["treemap", "binary", "squarified", "slice", "dice"]
+categories = ["algorithms", "graphics", "mathematics"]
 description = """
 Set of tree map algorithms (binary, squarified, ...)
 """
