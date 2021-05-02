@@ -1,0 +1,21 @@
+[package]
+name = "streemap"
+version = "0.1.0"
+authors = ["Vincent Rouillé <vincent@speedy37.fr>"]
+repository = "https://github.com/Speedy37/tree-map-rs"
+license = "MIT OR Apache-2.0"
+edition = "2018"
+keywords = ["treemap", "binary", "squarified", "slice", "dice"]
+description = """
+Set of tree map algorithms (binary, squarified, ...)
+"""
+
+[dependencies]
+num-traits = "0.2"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false
