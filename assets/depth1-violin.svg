@@ -4,13 +4,25 @@
  xmlns="http://www.w3.org/2000/svg"
  xmlns:xlink="http://www.w3.org/1999/xlink"
 >
-
+<style>
+@media (prefers-color-scheme: dark) {
+	rect {
+		fill: #2D333B
+	}
+	text {
+		fill: #ADBAC7
+	}
+	path[stroke="black"] {
+		stroke: #ADBAC7;
+	}
+}
+</style>
 <title>Gnuplot</title>
 <desc>Produced by GNUPLOT 5.2 patchlevel 6 </desc>
 
 <g id="gnuplot_canvas">
 
-<rect x="0" y="0" width="1280" height="800" fill="none"/>
+<rect x="0" y="0" width="1280" height="800" rx="10" ry="10" />
 <defs>
 
 	<circle id='gpDot' r='0.5' stroke-width='0.5' stroke='currentColor'/>
