@@ -1,5 +1,57 @@
+//! # Set of tree map algorithms
+//!
+//! Algorithms:
+//!
+//! - Slice and Dice 😵.
+//! - Binary.
+//! - [Squarified](https://www.win.tue.nl/~vanwijk/stm.pdf) by Bruls, Mark; Huizing, Kees; van Wijk, Jarke J. (2000).
+//!
+//! Example:
+//!
+//! ```rust
+//! use streemap::Rect;
+//!
+//! const R0: Rect<f32> = Rect { x: 0., y: 0., w: 0., h: 0. };
+//! let mut slice = [(6., R0), (6., R0), (4., R0), (3., R0), (2., R0), (2., R0), (1., R0)];
+//! streemap::squarify(
+//!     Rect { x: 0., y: 0., w: 6., h: 4. },
+//!     &mut slice[..],
+//!     |&(n, _)| n, // map item to item size
+//!     |(_, item_r), r| *item_r = r, // set item distributed rect
+//! );
+//! assert_eq!(
+//!     slice,
+//!     [
+//!         (6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+//!         (6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+//!         (4.0, Rect { x: 3.0, y: 0.0, w: 1.7142857, h: 2.3333333 }),
+//!         (3.0, Rect { x: 4.714286, y: 0.0, w: 1.2857141, h: 2.3333333 }),
+//!         (2.0, Rect { x: 3.0, y: 2.3333333, w: 1.1999999, h: 1.6666667 }),
+//!         (2.0, Rect { x: 4.2, y: 2.3333333, w: 1.1999999, h: 1.6666667 }),
+//!         (1.0, Rect { x: 5.3999996, y: 2.3333333, w: 0.60000014, h: 1.6666667 })
+//!     ]
+//! );
+//! streemap::binary(
+//!     Rect { x: 0., y: 0., w: 6., h: 4. },
+//!     &mut slice[..],
+//!     |&(n, _)| n, // map item to item size
+//!     |(_, item_r), r| *item_r = r, // set item distributed rect
+//! );
+//! assert_eq!(
+//!     slice,
+//!     [
+//!         (6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+//!         (6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+//!         (4.0, Rect { x: 3.0, y: 0.0, w: 3.0, h: 1.3333334 }),
+//!         (3.0, Rect { x: 3.0, y: 1.3333334, w: 1.125, h: 2.6666665 }),
+//!         (2.0, Rect { x: 4.125, y: 1.3333334, w: 1.875, h: 1.0666667 }),
+//!         (2.0, Rect { x: 4.125, y: 2.4, w: 1.25, h: 1.5999999 }),
+//!         (1.0, Rect { x: 5.375, y: 2.4, w: 0.625, h: 1.5999999 })
+//!     ]
+//! );
+//! ```
+//!
 use std::cmp::Ordering;
-use std::fmt::{Debug, Display};
 use std::iter::Sum;
 
 use num_traits::{NumAssignOps, NumOps, One, Zero};
@@ -17,6 +69,7 @@ impl<N> Rect<N>
 where
     N: Zero,
 {
+    /// Create a Rect at the origin from its size
     pub fn from_size(w: N, h: N) -> Self {
         Rect { x: N::zero(), y: N::zero(), w, h }
     }
@@ -39,6 +92,13 @@ where
     }
 }
 
+/// Compute the ratio (numer / denom) of an item.
+///
+/// `size_item` is the item size.
+/// `size_total` is the item container total size.
+/// `side_squared` is item container side length already squared.
+///
+/// __Complexity__: `O(1)`
 fn ratio<N>(side_squared: N, size_total: N, size_item: N) -> (N, N)
 where
     N: NumOps + PartialOrd + Copy,
@@ -52,29 +112,37 @@ where
     }
 }
 
-fn scale<N, T, S>(rect: Rect<N>, items: &[T], map_item_size: S) -> N
+/// Compute the scale to apply to item sizes for them to fit inside `rect`
+///
+/// __Complexity__: `O(items.len())`
+fn scale<N, T, S>(rect: Rect<N>, items: &[T], f_item_size: S) -> N
 where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug + Sum,
-    T: Debug,
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
     S: Fn(&T) -> N,
 {
     let rect_size = rect.w * rect.h;
-    let size_total = items.iter().map(|x| map_item_size(x)).sum();
+    let size_total = items.iter().map(|x| f_item_size(x)).sum();
     let scale = rect_size / size_total;
     scale
 }
 
-pub fn slice<N, T, S, R>(rect: Rect<N>, items: &mut [T], map_item_size: S, map_item_set_rect: R)
+/// Distribute `items` inside `rect` vertically without checking if they fit perfectly.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(items.len())`
+fn _slice<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, mut f_item_set_rect: R)
 where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug,
-    T: Debug,
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
     let mut y = rect.y;
     let mut it = items.iter_mut();
     while let Some(item) = it.next() {
-        let size_item = map_item_size(item);
+        let size_item = f_item_size(item);
         let rect_item = Rect {
             x: rect.x,
             y,
@@ -82,36 +150,44 @@ where
             h: if it.len() > 0 { size_item / rect.w } else { rect.h - (y - rect.y) },
         };
         y += rect_item.h;
-        map_item_set_rect(item, rect_item);
+        f_item_set_rect(item, rect_item);
     }
 }
 
-pub fn slice_scaled<N, T, S, R>(
-    rect: Rect<N>,
-    items: &mut [T],
-    map_item_size: S,
-    map_item_set_rect: R,
-) where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug + Sum,
-    T: Debug,
+/// Distribute `items` inside `rect` vertically.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(2⨯items.len())`
+pub fn slice<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, f_item_set_rect: R)
+where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
-    let scale = scale(rect, items, &map_item_size);
-    slice(rect, items, |item| map_item_size(item) * scale, map_item_set_rect);
+    let scale = scale(rect, items, &f_item_size);
+    _slice(rect, items, |item| f_item_size(item) * scale, f_item_set_rect);
 }
 
-pub fn dice<N, T, S, R>(rect: Rect<N>, items: &mut [T], map_item_size: S, map_item_set_rect: R)
+/// Distribute `items` inside `rect` horizontally without checking if they fit perfectly.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(items.len())`
+fn _dice<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, mut f_item_set_rect: R)
 where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug,
-    T: Debug,
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
     let mut x = rect.x;
     let mut it = items.iter_mut();
     while let Some(item) = it.next() {
-        let size_item = map_item_size(item);
+        let size_item = f_item_size(item);
         let rect_item = Rect {
             x,
             y: rect.y,
@@ -119,41 +195,42 @@ where
             h: rect.h,
         };
         x += rect_item.w;
-        map_item_set_rect(item, rect_item);
+        f_item_set_rect(item, rect_item);
     }
 }
 
-pub fn dice_scaled<N, T, S, R>(
-    rect: Rect<N>,
-    items: &mut [T],
-    map_item_size: S,
-    map_item_set_rect: R,
-) where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug + Sum,
-    T: Debug,
+/// Distribute `items` inside `rect` horizontally.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(2⨯items.len())`
+pub fn dice<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, f_item_set_rect: R)
+where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
-    let scale = scale(rect, items, &map_item_size);
-    dice(rect, items, |item| map_item_size(item) * scale, map_item_set_rect);
+    let scale = scale(rect, items, &f_item_size);
+    _dice(rect, items, |item| f_item_size(item) * scale, f_item_set_rect);
 }
 
 fn _binary<N, T, R>(
     rect: Rect<N>,
     items: &mut [T],
-    map_item_set_rect: &R,
+    f_item_set_rect: &mut R,
     sums: &[N],
     offset: N,
     value: N,
 ) where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug,
-    T: Debug,
-    R: Fn(&mut T, Rect<N>),
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy,
+    R: FnMut(&mut T, Rect<N>),
 {
-    if items.is_empty() {
+    if items.is_empty() || value.is_zero() {
         return;
     } else if items.len() == 1 {
-        map_item_set_rect(&mut items[0], rect);
+        f_item_set_rect(&mut items[0], rect);
         return;
     }
 
@@ -172,43 +249,54 @@ fn _binary<N, T, R>(
         let ym = (rect.y * right + ye * left) / value;
         (Rect { h: ym - rect.y, ..rect }, Rect { y: ym, h: ye - ym, ..rect })
     };
-    _binary(lrect, &mut items[0..mid], map_item_set_rect, &sums[0..mid], offset, left);
-    _binary(rrect, &mut items[mid..], map_item_set_rect, &sums[mid..], sums[mid - 1], right);
+    _binary(lrect, &mut items[0..mid], f_item_set_rect, &sums[0..mid], offset, left);
+    _binary(rrect, &mut items[mid..], f_item_set_rect, &sums[mid..], sums[mid - 1], right);
 }
 
-pub fn binary_scaled<N, T, S, R>(
-    rect: Rect<N>,
-    items: &mut [T],
-    map_item_size: S,
-    map_item_set_rect: R,
-) where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug,
-    T: Debug,
+/// Distribute `items` inside `rect` by splitting it recursively in 2 areas close to the same sizes.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// To maximize the output quality its best to sort items by size in descending order.
+///
+/// __Complexity__: `O(3⨯items.len()⨯log(items.len()))`
+pub fn binary<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, mut f_item_set_rect: R)
+where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
     let mut size_total = N::zero();
     let sums: Vec<N> = items
         .iter()
         .map(|item| {
-            let item_size = map_item_size(item);
+            let item_size = f_item_size(item);
             size_total += item_size;
             size_total
         })
         .collect();
-    _binary(rect, items, &map_item_set_rect, sums.as_slice(), N::zero(), size_total);
+    _binary(rect, items, &mut f_item_set_rect, sums.as_slice(), N::zero(), size_total);
 }
 
-pub fn squarify<N, T, S, R>(
+/// Distribute `items` inside `rect` while trying to get the aspect ratio as close
+/// to 1 as possible without checking is they fit.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(2⨯items.len())`
+fn _squarify<N, T, S, R>(
     mut rect: Rect<N>,
     mut items: &mut [T],
-    map_item_size: S,
-    map_item_set_rect: R,
+    f_item_size: S,
+    mut f_item_set_rect: R,
 ) where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug,
-    T: Debug,
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
     while !items.is_empty() {
         let is_wide = rect.w > rect.h;
@@ -220,7 +308,7 @@ pub fn squarify<N, T, S, R>(
         let split_idx = items
             .iter()
             .position(|item| {
-                let size_item = map_item_size(item);
+                let size_item = f_item_size(item);
                 let size_total1 = size_total0 + size_item;
 
                 let (numer1, denom1) = ratio(side_squared, size_total1, size_item);
@@ -240,41 +328,48 @@ pub fn squarify<N, T, S, R>(
         if is_wide {
             let w = rect.w - split_side;
             rect.w = split_side;
-            slice(rect, head, &map_item_size, &map_item_set_rect);
+            _slice(rect, head, &f_item_size, &mut f_item_set_rect);
             rect.w = w;
             rect.x += split_side;
         } else {
             let h = rect.h - split_side;
             rect.h = split_side;
-            dice(rect, head, &map_item_size, &map_item_set_rect);
+            _dice(rect, head, &f_item_size, &mut f_item_set_rect);
             rect.h = h;
             rect.y += split_side;
         };
     }
 }
 
-pub fn squarify_scaled<N, T, S, R>(
-    rect: Rect<N>,
-    items: &mut [T],
-    map_item_size: S,
-    map_item_set_rect: R,
-) where
-    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Display + Debug + Sum,
-    T: Debug,
+/// Distribute `items` inside `rect` while trying to get the aspect ratio as close
+/// to 1 as possible.
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// To maximize the output quality its best to sort items by size in descending order.
+///
+/// __Complexity__: `O(3⨯items.len())`
+pub fn squarify<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, f_item_set_rect: R)
+where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
     S: Fn(&T) -> N,
-    R: Fn(&mut T, Rect<N>),
+    R: FnMut(&mut T, Rect<N>),
 {
-    let scale = scale(rect, items, &map_item_size);
-    squarify(rect, items, |item| map_item_size(item) * scale, map_item_set_rect);
+    let scale = scale(rect, items, &f_item_size);
+    _squarify(rect, items, |item| f_item_size(item) * scale, f_item_set_rect);
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Display;
+
     use super::*;
 
     fn svg<N: NumOps + Copy + Display>(
         view_box: Rect<N>,
-        slice: &[(N, Rect<N>)],
+        slice: &[(usize, N, Rect<N>)],
         scale: N,
     ) -> String {
         use std::fmt::Write;
@@ -298,7 +393,7 @@ mod tests {
             view_box.h * scale
         )
         .unwrap();
-        for (_size, r) in slice {
+        for (_i, _size, r) in slice {
             writeln!(
                 &mut f,
                 r#"  <rect x="{}" y="{}" width="{}" height="{}" fill="url(#g)" />"#,
@@ -311,88 +406,120 @@ mod tests {
         f
     }
 
+    fn mkslice<N: Copy + Zero>(slice: &[N]) -> Vec<(usize, N, Rect<N>)> {
+        slice
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, n)| (i, n, Rect::from_size(N::zero(), N::zero())))
+            .collect()
+    }
+
+    fn mkset_rect<N>() -> impl FnMut(&mut (usize, N, Rect<N>), Rect<N>) {
+        let mut idx = 0;
+        move |(i, _n, item_r), r| {
+            assert_eq!(*i, idx, "f_item_set_rect must be called in stable order");
+            *item_r = r;
+            idx += 1;
+        }
+    }
+
     #[test]
     fn binary_f32() {
-        const R0: Rect<f32> = Rect { x: 0., y: 0., w: 0., h: 0. };
-        let mut slice = [(6., R0), (6., R0), (4., R0), (3., R0), (2., R0), (2., R0), (1., R0)];
-        binary_scaled(
-            Rect { x: 0., y: 0., w: 6., h: 4. },
-            &mut slice[..],
-            |&(n, _)| n,
-            |(_, item_r), r| *item_r = r,
-        );
+        let mut slice = mkslice::<f32>(&[6., 6., 4., 3., 2., 2., 1.]);
+        binary(Rect { x: 0., y: 0., w: 6., h: 4. }, &mut slice[..], |&(_, n, _)| n, mkset_rect());
         assert_eq!(
             slice,
             [
-                (6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
-                (6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
-                (4.0, Rect { x: 3.0, y: 0.0, w: 3.0, h: 1.3333334 }),
-                (3.0, Rect { x: 3.0, y: 1.3333334, w: 1.125, h: 2.6666665 }),
-                (2.0, Rect { x: 4.125, y: 1.3333334, w: 1.875, h: 1.0666667 }),
-                (2.0, Rect { x: 4.125, y: 2.4, w: 1.25, h: 1.5999999 }),
-                (1.0, Rect { x: 5.375, y: 2.4, w: 0.625, h: 1.5999999 })
+                (0, 6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+                (1, 6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+                (2, 4.0, Rect { x: 3.0, y: 0.0, w: 3.0, h: 1.3333334 }),
+                (3, 3.0, Rect { x: 3.0, y: 1.3333334, w: 1.125, h: 2.6666665 }),
+                (4, 2.0, Rect { x: 4.125, y: 1.3333334, w: 1.875, h: 1.0666667 }),
+                (5, 2.0, Rect { x: 4.125, y: 2.4, w: 1.25, h: 1.5999999 }),
+                (6, 1.0, Rect { x: 5.375, y: 2.4, w: 0.625, h: 1.5999999 })
             ]
         );
-        eprintln!("{}", svg(Rect { x: 0., y: 0., w: 6., h: 4. }, &slice[..], 50.0));
+        eprintln!(
+            "<!-- binary -->\n{}",
+            svg(Rect { x: 0., y: 0., w: 6., h: 4. }, &slice[..], 50.0)
+        );
+
+        let mut slice = mkslice::<f32>(&[12., 12., 8., 6., 4., 4., 2.]);
+        binary(Rect { x: 0., y: 0., w: 6., h: 4. }, &mut slice[..], |&(_, n, _)| n, mkset_rect());
+        assert_eq!(
+            slice,
+            [
+                (0, 12.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+                (1, 12.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+                (2, 8.0, Rect { x: 3.0, y: 0.0, w: 3.0, h: 1.3333334 }),
+                (3, 6.0, Rect { x: 3.0, y: 1.3333334, w: 1.125, h: 2.6666665 }),
+                (4, 4.0, Rect { x: 4.125, y: 1.3333334, w: 1.875, h: 1.0666667 }),
+                (5, 4.0, Rect { x: 4.125, y: 2.4, w: 1.25, h: 1.5999999 }),
+                (6, 2.0, Rect { x: 5.375, y: 2.4, w: 0.625, h: 1.5999999 })
+            ]
+        );
     }
 
     #[test]
     fn squarify_paper_example_f32() {
-        const R0: Rect<f32> = Rect { x: 0., y: 0., w: 0., h: 0. };
-        let mut slice = [(6., R0), (6., R0), (4., R0), (3., R0), (2., R0), (2., R0), (1., R0)];
-        squarify(
+        let mut slice = mkslice::<f32>(&[6., 6., 4., 3., 2., 2., 1.]);
+        _squarify(
             Rect { x: 0., y: 0., w: 6., h: 4. },
             &mut slice[..],
-            |&(n, _)| n,
-            |(_, item_r), r| *item_r = r,
+            |&(_, n, _)| n,
+            mkset_rect(),
         );
         assert_eq!(
             slice,
             [
-                (6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
-                (6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
-                (4.0, Rect { x: 3.0, y: 0.0, w: 1.7142857, h: 2.3333333 }),
-                (3.0, Rect { x: 4.714286, y: 0.0, w: 1.2857141, h: 2.3333333 }),
-                (2.0, Rect { x: 3.0, y: 2.3333333, w: 1.1999999, h: 1.6666667 }),
-                (2.0, Rect { x: 4.2, y: 2.3333333, w: 1.1999999, h: 1.6666667 }),
-                (1.0, Rect { x: 5.3999996, y: 2.3333333, w: 0.60000014, h: 1.6666667 })
+                (0, 6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+                (1, 6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+                (2, 4.0, Rect { x: 3.0, y: 0.0, w: 1.7142857, h: 2.3333333 }),
+                (3, 3.0, Rect { x: 4.714286, y: 0.0, w: 1.2857141, h: 2.3333333 }),
+                (4, 2.0, Rect { x: 3.0, y: 2.3333333, w: 1.1999999, h: 1.6666667 }),
+                (5, 2.0, Rect { x: 4.2, y: 2.3333333, w: 1.1999999, h: 1.6666667 }),
+                (6, 1.0, Rect { x: 5.3999996, y: 2.3333333, w: 0.60000014, h: 1.6666667 })
             ]
         );
-        eprintln!("{}", svg(Rect { x: 0., y: 0., w: 6., h: 4. }, &slice[..], 50.0));
-        squarify_scaled(
+        eprintln!(
+            "<!-- squarify -->\n{}",
+            svg(Rect { x: 0., y: 0., w: 6., h: 4. }, &slice[..], 50.0)
+        );
+        squarify(
             Rect { x: 0., y: 0., w: 12., h: 8. },
             &mut slice[..],
-            |&(n, _)| n,
-            |(_, item_r), r| *item_r = r,
+            |&(_, n, _)| n,
+            mkset_rect(),
         );
         assert_eq!(
             slice,
             [
-                (6.0, Rect { x: 0.0, y: 0.0, w: 6.0, h: 4.0 }),
-                (6.0, Rect { x: 0.0, y: 4.0, w: 6.0, h: 4.0 }),
-                (4.0, Rect { x: 6.0, y: 0.0, w: 3.4285715, h: 4.6666665 }),
-                (3.0, Rect { x: 9.428572, y: 0.0, w: 2.5714283, h: 4.6666665 }),
-                (2.0, Rect { x: 6.0, y: 4.6666665, w: 2.3999999, h: 3.3333335 }),
-                (2.0, Rect { x: 8.4, y: 4.6666665, w: 2.3999999, h: 3.3333335 }),
-                (1.0, Rect { x: 10.799999, y: 4.6666665, w: 1.2000003, h: 3.3333335 })
+                (0, 6.0, Rect { x: 0.0, y: 0.0, w: 6.0, h: 4.0 }),
+                (1, 6.0, Rect { x: 0.0, y: 4.0, w: 6.0, h: 4.0 }),
+                (2, 4.0, Rect { x: 6.0, y: 0.0, w: 3.4285715, h: 4.6666665 }),
+                (3, 3.0, Rect { x: 9.428572, y: 0.0, w: 2.5714283, h: 4.6666665 }),
+                (4, 2.0, Rect { x: 6.0, y: 4.6666665, w: 2.3999999, h: 3.3333335 }),
+                (5, 2.0, Rect { x: 8.4, y: 4.6666665, w: 2.3999999, h: 3.3333335 }),
+                (6, 1.0, Rect { x: 10.799999, y: 4.6666665, w: 1.2000003, h: 3.3333335 })
             ]
         );
-        squarify_scaled(
+        squarify(
             Rect { x: 1., y: 2., w: 12., h: 8. },
             &mut slice[..],
-            |&(n, _)| n,
-            |(_, item_r), r| *item_r = r,
+            |&(_, n, _)| n,
+            mkset_rect(),
         );
         assert_eq!(
             slice,
             [
-                (6.0, Rect { x: 1.0, y: 2.0, w: 6.0, h: 4.0 }),
-                (6.0, Rect { x: 1.0, y: 6.0, w: 6.0, h: 4.0 }),
-                (4.0, Rect { x: 7.0, y: 2.0, w: 3.4285715, h: 4.6666665 }),
-                (3.0, Rect { x: 10.428572, y: 2.0, w: 2.5714283, h: 4.6666665 }),
-                (2.0, Rect { x: 7.0, y: 6.6666665, w: 2.3999999, h: 3.3333335 }),
-                (2.0, Rect { x: 9.4, y: 6.6666665, w: 2.3999999, h: 3.3333335 }),
-                (1.0, Rect { x: 11.799999, y: 6.6666665, w: 1.2000003, h: 3.3333335 })
+                (0, 6.0, Rect { x: 1.0, y: 2.0, w: 6.0, h: 4.0 }),
+                (1, 6.0, Rect { x: 1.0, y: 6.0, w: 6.0, h: 4.0 }),
+                (2, 4.0, Rect { x: 7.0, y: 2.0, w: 3.4285715, h: 4.6666665 }),
+                (3, 3.0, Rect { x: 10.428572, y: 2.0, w: 2.5714283, h: 4.6666665 }),
+                (4, 2.0, Rect { x: 7.0, y: 6.6666665, w: 2.3999999, h: 3.3333335 }),
+                (5, 2.0, Rect { x: 9.4, y: 6.6666665, w: 2.3999999, h: 3.3333335 }),
+                (6, 1.0, Rect { x: 11.799999, y: 6.6666665, w: 1.2000003, h: 3.3333335 })
             ]
         );
     }

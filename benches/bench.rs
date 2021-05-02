@@ -1,103 +1,73 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use streemap::*;
+use std::iter::Sum;
+
+use criterion::measurement::Measurement;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkGroup, Criterion};
+use num_traits::{AsPrimitive, NumAssignOps, NumOps, One, Zero};
+use streemap::Rect;
+
+fn mkslice<T: AsPrimitive<N>, N: Copy + Zero + 'static>(slice: &[T]) -> Vec<(N, Rect<N>)> {
+    slice.iter().copied().map(|n| (n.as_(), Rect::from_size(N::zero(), N::zero()))).collect()
+}
+
+fn s<N: Copy>() -> impl Copy + Fn(&(N, Rect<N>)) -> N {
+    |&(n, _)| n
+}
+fn r<N: Copy>() -> impl Copy + Fn(&mut (N, Rect<N>), Rect<N>) {
+    |(_, item_r), r| *item_r = r
+}
+
+fn bench_function<N, M, F, S, R>(
+    g: &mut BenchmarkGroup<'_, M>,
+    id: &str,
+    slice: &[f32],
+    f: F,
+    s: S,
+    r: R,
+) where
+    M: Measurement,
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum + 'static,
+    f32: AsPrimitive<N>,
+    F: Fn(Rect<N>, &mut [(N, Rect<N>)], S, R),
+    S: Copy + Fn(&(N, Rect<N>)) -> N,
+    R: Copy + Fn(&mut (N, Rect<N>), Rect<N>),
+{
+    let mut slice_x = mkslice::<f32, N>(slice);
+    g.bench_function(id, |b| {
+        b.iter(|| {
+            f(
+                black_box(Rect { x: 0f32.as_(), y: 0f32.as_(), w: 6f32.as_(), h: 4f32.as_() }),
+                black_box(&mut slice_x[..]),
+                s,
+                r,
+            )
+        })
+    });
+}
 
 fn criterion_benchmark(c: &mut Criterion) {
-    const R0: Rect<f32> = Rect { x: 0., y: 0., w: 0., h: 0. };
-    let mut slice_f32 = [(6., R0), (6., R0), (4., R0), (3., R0), (2., R0), (2., R0), (1., R0)];
-    const R1: Rect<i32> = Rect { x: 0, y: 0, w: 0, h: 0 };
-    let mut slice_i32 = [(6, R1), (6, R1), (4, R1), (3, R1), (2, R1), (2, R1), (1, R1)];
-    const R2: Rect<f64> = Rect { x: 0., y: 0., w: 0., h: 0. };
-    let mut slice_f64 = [(6., R2), (6., R2), (4., R2), (3., R2), (2., R2), (2., R2), (1., R2)];
-    const R3: Rect<i64> = Rect { x: 0, y: 0, w: 0, h: 0 };
-    let mut slice_i64 = [(6, R3), (6, R3), (4, R3), (3, R3), (2, R3), (2, R3), (1, R3)];
+    let d: &[f32] = &[6., 6., 4., 3., 2., 2., 1.];
 
-    c.bench_function("squarify f32", |b| {
-        b.iter(|| {
-            squarify(
-                Rect { x: 0., y: 0., w: 6., h: 4. },
-                black_box(&mut slice_f32[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
+    let mut g = c.benchmark_group("treemap");
+    bench_function::<f32, _, _, _, _>(&mut g, "dice f32", d, streemap::dice, s(), r());
+    bench_function::<f32, _, _, _, _>(&mut g, "slice f32", d, streemap::slice, s(), r());
+    bench_function::<f32, _, _, _, _>(&mut g, "binary f32", d, streemap::binary, s(), r());
+    bench_function::<f32, _, _, _, _>(&mut g, "squarify f32", d, streemap::squarify, s(), r());
 
-    c.bench_function("squarify_scaled f32", |b| {
-        b.iter(|| {
-            squarify_scaled(
-                Rect { x: 0., y: 0., w: 6., h: 4. },
-                black_box(&mut slice_f32[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
+    bench_function::<f64, _, _, _, _>(&mut g, "dice f64", d, streemap::dice, s(), r());
+    bench_function::<f64, _, _, _, _>(&mut g, "slice f64", d, streemap::slice, s(), r());
+    bench_function::<f64, _, _, _, _>(&mut g, "binary f64", d, streemap::binary, s(), r());
+    bench_function::<f64, _, _, _, _>(&mut g, "squarify f64", d, streemap::squarify, s(), r());
 
-    c.bench_function("squarify i32", |b| {
-        b.iter(|| {
-            squarify(
-                Rect { x: 0, y: 0, w: 6, h: 4 },
-                black_box(&mut slice_i32[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
+    bench_function::<i32, _, _, _, _>(&mut g, "dice i32", d, streemap::dice, s(), r());
+    bench_function::<i32, _, _, _, _>(&mut g, "slice i32", d, streemap::slice, s(), r());
+    bench_function::<i32, _, _, _, _>(&mut g, "binary i32", d, streemap::binary, s(), r());
+    bench_function::<i32, _, _, _, _>(&mut g, "squarify i32", d, streemap::squarify, s(), r());
 
-    c.bench_function("squarify_scaled i32", |b| {
-        b.iter(|| {
-            squarify_scaled(
-                Rect { x: 0, y: 0, w: 6, h: 4 },
-                black_box(&mut slice_i32[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
-
-    c.bench_function("squarify f64", |b| {
-        b.iter(|| {
-            squarify(
-                Rect { x: 0., y: 0., w: 6., h: 4. },
-                black_box(&mut slice_f64[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
-
-    c.bench_function("squarify_scaled f64", |b| {
-        b.iter(|| {
-            squarify_scaled(
-                Rect { x: 0., y: 0., w: 6., h: 4. },
-                black_box(&mut slice_f64[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
-
-    c.bench_function("squarify i64", |b| {
-        b.iter(|| {
-            squarify(
-                Rect { x: 0, y: 0, w: 6, h: 4 },
-                black_box(&mut slice_i64[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
-
-    c.bench_function("squarify_scaled i64", |b| {
-        b.iter(|| {
-            squarify_scaled(
-                Rect { x: 0, y: 0, w: 6, h: 4 },
-                black_box(&mut slice_i64[..]),
-                |&(n, _)| n,
-                |(_, item_r), r| *item_r = r,
-            )
-        })
-    });
+    bench_function::<i64, _, _, _, _>(&mut g, "dice i64", d, streemap::dice, s(), r());
+    bench_function::<i64, _, _, _, _>(&mut g, "slice i64", d, streemap::slice, s(), r());
+    bench_function::<i64, _, _, _, _>(&mut g, "binary i64", d, streemap::binary, s(), r());
+    bench_function::<i64, _, _, _, _>(&mut g, "squarify i64", d, streemap::squarify, s(), r());
+    g.finish();
 }
 
 criterion_group!(benches, criterion_benchmark);
