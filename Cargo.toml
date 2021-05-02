@@ -16,7 +16,12 @@ num-traits = "0.2"
 
 [dev-dependencies]
 criterion = "0.3"
+iai = "0.1"
 
 [[bench]]
 name = "criterion"
+harness = false
+
+[[bench]]
+name = "iai"
 harness = false

@@ -11,7 +11,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -22,3 +22,7 @@ jobs:
         run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose -- --nocapture
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt install -y valgrind
+      - name: Run benchmark (cachegrind)
+        run: cargo bench --bench iai
