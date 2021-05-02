@@ -373,9 +373,6 @@ fn _ordered_pivot<N, T, S, R, P>(
     R: FnMut(&mut T, Rect<N>),
     P: Fn(&[T]) -> usize,
 {
-    if items.is_empty() {
-        return;
-    }
     let p0_idx = f_pivot(items);
     let (l1, lrem) = items.split_at_mut(p0_idx);
 
@@ -396,7 +393,11 @@ fn _ordered_pivot<N, T, S, R, P>(
             rect.y += r1_oside;
             rect.h -= r1_oside;
         }
-        _ordered_pivot(r1, l1, f_item_size, f_item_set_rect, f_pivot);
+        if l1.len() == 1 {
+            f_item_set_rect(&mut l1[0], r1);
+        } else {
+            _ordered_pivot(r1, l1, f_item_size, f_item_set_rect, f_pivot);
+        }
     }
 
     let (p, lrem) = lrem.split_first_mut().unwrap();
@@ -436,8 +437,16 @@ fn _ordered_pivot<N, T, S, R, P>(
             r3 = Rect { y: rect.y + pr2_oside, h: rect.h - pr2_oside, ..rect };
         }
         f_item_set_rect(p, rp);
-        _ordered_pivot(r2, l2, f_item_size, f_item_set_rect, f_pivot);
-        _ordered_pivot(r3, l3, f_item_size, f_item_set_rect, f_pivot);
+        if l2.len() == 1 {
+            f_item_set_rect(&mut l2[0], r2);
+        } else if !l2.is_empty() {
+            _ordered_pivot(r2, l2, f_item_size, f_item_set_rect, f_pivot);
+        }
+        if l3.len() == 1 {
+            f_item_set_rect(&mut l3[0], r3);
+        } else if !l3.is_empty() {
+            _ordered_pivot(r3, l3, f_item_size, f_item_set_rect, f_pivot);
+        }
     }
 }
 
@@ -458,10 +467,12 @@ pub fn ordered_pivot_by_middle<N, T, S, R>(
     S: Fn(&T) -> N,
     R: FnMut(&mut T, Rect<N>),
 {
-    let scale = scale(rect, items, &f_item_size);
-    let f_item_size_scaled = |item: &T| f_item_size(item) * scale;
-    let f_pivot = |items: &[T]| items.len() / 2;
-    _ordered_pivot(rect, items, &f_item_size_scaled, &mut f_item_set_rect, &f_pivot)
+    if !items.is_empty() {
+        let scale = scale(rect, items, &f_item_size);
+        let f_item_size_scaled = |item: &T| f_item_size(item) * scale;
+        let f_pivot = |items: &[T]| items.len() / 2;
+        _ordered_pivot(rect, items, &f_item_size_scaled, &mut f_item_set_rect, &f_pivot)
+    }
 }
 
 /// Distribute `items` inside `rect` by splitting it recursively around pivot by size in 4 areas
@@ -481,23 +492,25 @@ pub fn ordered_pivot_by_size<N, T, S, R>(
     S: Fn(&T) -> N,
     R: FnMut(&mut T, Rect<N>),
 {
-    let scale = scale(rect, items, &f_item_size);
-    let f_item_size_scaled = |item: &T| f_item_size(item) * scale;
-    let f_pivot = |items: &[T]| {
-        items
-            .iter()
-            .enumerate()
-            .fold((0usize, N::zero()), |(idx_b, size_b), (idx, item)| {
-                let size_item = f_item_size(item);
-                if size_item > size_b {
-                    (idx, size_item)
-                } else {
-                    (idx_b, size_b)
-                }
-            })
-            .0
-    };
-    _ordered_pivot(rect, items, &f_item_size_scaled, &mut f_item_set_rect, &f_pivot)
+    if !items.is_empty() {
+        let scale = scale(rect, items, &f_item_size);
+        let f_item_size_scaled = |item: &T| f_item_size(item) * scale;
+        let f_pivot = |items: &[T]| {
+            items
+                .iter()
+                .enumerate()
+                .fold((0usize, N::zero()), |(idx_b, size_b), (idx, item)| {
+                    let size_item = f_item_size(item);
+                    if size_item > size_b {
+                        (idx, size_item)
+                    } else {
+                        (idx_b, size_b)
+                    }
+                })
+                .0
+        };
+        _ordered_pivot(rect, items, &f_item_size_scaled, &mut f_item_set_rect, &f_pivot)
+    }
 }
 
 #[cfg(test)]
