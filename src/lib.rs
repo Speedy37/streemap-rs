@@ -238,6 +238,7 @@ fn _binary<N, T, R>(
     let mid = sums
         .binary_search_by(|&p| if p > target { Ordering::Greater } else { Ordering::Less })
         .unwrap_or_else(|x| if x == 0 { 1 } else { x });
+    debug_assert!(mid > 0);
     let left = sums[mid - 1] - offset;
     let right = value - left;
     let (lrect, rrect) = if rect.w > rect.h {
@@ -249,8 +250,17 @@ fn _binary<N, T, R>(
         let ym = (rect.y * right + ye * left) / value;
         (Rect { h: ym - rect.y, ..rect }, Rect { y: ym, h: ye - ym, ..rect })
     };
-    _binary(lrect, &mut items[0..mid], f_item_set_rect, &sums[0..mid], offset, left);
-    _binary(rrect, &mut items[mid..], f_item_set_rect, &sums[mid..], sums[mid - 1], right);
+    if mid == 1 {
+        f_item_set_rect(&mut items[0], lrect);
+    } else {
+        _binary(lrect, &mut items[0..mid], f_item_set_rect, &sums[0..mid], offset, left);
+    }
+    let ritems = &mut items[mid..];
+    if ritems.len() == 1 {
+        f_item_set_rect(&mut ritems[0], rrect);
+    } else if !ritems.is_empty() {
+        _binary(rrect, ritems, f_item_set_rect, &sums[mid..], sums[mid - 1], right);
+    }
 }
 
 /// Distribute `items` inside `rect` by splitting it recursively in 2 areas close to the same sizes.
@@ -268,16 +278,18 @@ where
     S: Fn(&T) -> N,
     R: FnMut(&mut T, Rect<N>),
 {
-    let mut size_total = N::zero();
-    let sums: Vec<N> = items
-        .iter()
-        .map(|item| {
-            let item_size = f_item_size(item);
-            size_total += item_size;
-            size_total
-        })
-        .collect();
-    _binary(rect, items, &mut f_item_set_rect, sums.as_slice(), N::zero(), size_total);
+    if !items.is_empty() {
+        let mut size_total = N::zero();
+        let sums: Vec<N> = items
+            .iter()
+            .map(|item| {
+                let item_size = f_item_size(item);
+                size_total += item_size;
+                size_total
+            })
+            .collect();
+        _binary(rect, items, &mut f_item_set_rect, sums.as_slice(), N::zero(), size_total);
+    }
 }
 
 /// Distribute `items` inside `rect` while trying to get the aspect ratio as close
