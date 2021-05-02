@@ -3,6 +3,8 @@ use std::iter::Sum;
 use criterion::measurement::Measurement;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkGroup, Criterion};
 use num_traits::{AsPrimitive, NumAssignOps, NumOps, One, Zero};
+use streemap::ordered_pivot_by_middle as pivot_by_middle;
+use streemap::ordered_pivot_by_size as pivot_by_size;
 use streemap::Rect;
 
 fn mkslice<T: AsPrimitive<N>, N: Copy + Zero + 'static>(slice: &[T]) -> Vec<(N, Rect<N>)> {
@@ -52,21 +54,29 @@ fn criterion_benchmark(c: &mut Criterion) {
     bench_function::<f32, _, _, _, _>(&mut g, "slice f32", d, streemap::slice, s(), r());
     bench_function::<f32, _, _, _, _>(&mut g, "binary f32", d, streemap::binary, s(), r());
     bench_function::<f32, _, _, _, _>(&mut g, "squarify f32", d, streemap::squarify, s(), r());
+    bench_function::<f32, _, _, _, _>(&mut g, "pivot_by_middle f32", d, pivot_by_middle, s(), r());
+    bench_function::<f32, _, _, _, _>(&mut g, "pivot_by_size f32", d, pivot_by_size, s(), r());
 
     bench_function::<f64, _, _, _, _>(&mut g, "dice f64", d, streemap::dice, s(), r());
     bench_function::<f64, _, _, _, _>(&mut g, "slice f64", d, streemap::slice, s(), r());
     bench_function::<f64, _, _, _, _>(&mut g, "binary f64", d, streemap::binary, s(), r());
     bench_function::<f64, _, _, _, _>(&mut g, "squarify f64", d, streemap::squarify, s(), r());
+    bench_function::<f64, _, _, _, _>(&mut g, "pivot_by_middle f64", d, pivot_by_middle, s(), r());
+    bench_function::<f64, _, _, _, _>(&mut g, "pivot_by_size f64", d, pivot_by_size, s(), r());
 
     bench_function::<i32, _, _, _, _>(&mut g, "dice i32", d, streemap::dice, s(), r());
     bench_function::<i32, _, _, _, _>(&mut g, "slice i32", d, streemap::slice, s(), r());
     bench_function::<i32, _, _, _, _>(&mut g, "binary i32", d, streemap::binary, s(), r());
     bench_function::<i32, _, _, _, _>(&mut g, "squarify i32", d, streemap::squarify, s(), r());
+    bench_function::<i32, _, _, _, _>(&mut g, "pivot_by_middle i32", d, pivot_by_middle, s(), r());
+    bench_function::<i32, _, _, _, _>(&mut g, "pivot_by_size i32", d, pivot_by_size, s(), r());
 
     bench_function::<i64, _, _, _, _>(&mut g, "dice i64", d, streemap::dice, s(), r());
     bench_function::<i64, _, _, _, _>(&mut g, "slice i64", d, streemap::slice, s(), r());
     bench_function::<i64, _, _, _, _>(&mut g, "binary i64", d, streemap::binary, s(), r());
     bench_function::<i64, _, _, _, _>(&mut g, "squarify i64", d, streemap::squarify, s(), r());
+    bench_function::<i64, _, _, _, _>(&mut g, "pivot_by_middle i64", d, pivot_by_middle, s(), r());
+    bench_function::<i64, _, _, _, _>(&mut g, "pivot_by_size i64", d, pivot_by_size, s(), r());
     g.finish();
 }
 

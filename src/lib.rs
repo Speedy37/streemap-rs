@@ -261,7 +261,7 @@ fn _binary<N, T, R>(
 ///
 /// To maximize the output quality its best to sort items by size in descending order.
 ///
-/// __Complexity__: `O(3⨯items.len()⨯log(items.len()))`
+/// __Complexity__: `O(3⨯items.len()⨯log_2(items.len()))`
 pub fn binary<N, T, S, R>(rect: Rect<N>, items: &mut [T], f_item_size: S, mut f_item_set_rect: R)
 where
     N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy,
@@ -312,15 +312,15 @@ fn _squarify<N, T, S, R>(
                 let size_total1 = size_total0 + size_item;
 
                 let (numer1, denom1) = ratio(side_squared, size_total1, size_item);
-                let split = numer1 * denom0 > numer0 * denom1;
-                if split {
+                let worse = numer1 * denom0 > numer0 * denom1;
+                if worse {
                     split_side = size_total0 / side;
                 }
                 size_total0 = size_total1;
                 numer0 = numer1;
                 denom0 = denom1;
 
-                split
+                worse
             })
             .unwrap_or(items.len());
         let (head, tail) = items.split_at_mut(split_idx);
@@ -361,9 +361,151 @@ where
     _squarify(rect, items, |item| f_item_size(item) * scale, f_item_set_rect);
 }
 
+fn _ordered_pivot<N, T, S, R, P>(
+    mut rect: Rect<N>,
+    items: &mut [T],
+    f_item_size: &S,
+    f_item_set_rect: &mut R,
+    f_pivot: &P,
+) where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
+    S: Fn(&T) -> N,
+    R: FnMut(&mut T, Rect<N>),
+    P: Fn(&[T]) -> usize,
+{
+    if items.is_empty() {
+        return;
+    }
+    let p0_idx = f_pivot(items);
+    let (l1, lrem) = items.split_at_mut(p0_idx);
+
+    let is_wide = rect.w >= rect.h;
+    let side = if is_wide { rect.h } else { rect.w };
+    let side_squared = side * side;
+
+    if !l1.is_empty() {
+        let l1_size = l1.iter().map(|x| f_item_size(x)).sum::<N>();
+        let r1_oside = l1_size / side;
+        let r1;
+        if is_wide {
+            r1 = Rect { w: r1_oside, ..rect };
+            rect.x += r1_oside;
+            rect.w -= r1_oside;
+        } else {
+            r1 = Rect { h: r1_oside, ..rect };
+            rect.y += r1_oside;
+            rect.h -= r1_oside;
+        }
+        _ordered_pivot(r1, l1, f_item_size, f_item_set_rect, f_pivot);
+    }
+
+    let (p, lrem) = lrem.split_first_mut().unwrap();
+    let p_size = f_item_size(p);
+    if lrem.is_empty() {
+        f_item_set_rect(p, rect);
+    } else {
+        let mut t_size = p_size;
+        let mut p1_idx = 0;
+        let mut pl2_size = t_size;
+        let (mut numer_b, mut denom_b) = (N::one(), N::zero());
+        for idx in 0..lrem.len() {
+            let size_item = f_item_size(&lrem[idx]);
+            t_size += size_item;
+            let (numer, denom) = ratio(side_squared, t_size, size_item);
+            let better_ratio = numer * denom_b < numer_b * denom;
+            if better_ratio {
+                numer_b = numer;
+                denom_b = denom;
+                p1_idx = idx;
+                pl2_size = t_size;
+            }
+        }
+        let (l2, l3) = lrem.split_at_mut(p1_idx + 1);
+        let pr2_oside = pl2_size / side;
+        let p_side = p_size / pr2_oside;
+        let rp;
+        let r2;
+        let r3;
+        if is_wide {
+            rp = Rect { w: pr2_oside, h: p_side, ..rect };
+            r2 = Rect { w: pr2_oside, y: rect.y + p_side, h: rect.h - p_side, ..rect };
+            r3 = Rect { x: rect.x + pr2_oside, w: rect.w - pr2_oside, ..rect };
+        } else {
+            rp = Rect { h: pr2_oside, w: p_side, ..rect };
+            r2 = Rect { h: pr2_oside, x: rect.x + p_side, w: rect.w - p_side, ..rect };
+            r3 = Rect { y: rect.y + pr2_oside, h: rect.h - pr2_oside, ..rect };
+        }
+        f_item_set_rect(p, rp);
+        _ordered_pivot(r2, l2, f_item_size, f_item_set_rect, f_pivot);
+        _ordered_pivot(r3, l3, f_item_size, f_item_set_rect, f_pivot);
+    }
+}
+
+/// Distribute `items` inside `rect` by splitting it recursively around pivot by middle in 4 areas
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(2⨯items.len()⨯log_4(items.len()))`
+pub fn ordered_pivot_by_middle<N, T, S, R>(
+    rect: Rect<N>,
+    items: &mut [T],
+    f_item_size: S,
+    mut f_item_set_rect: R,
+) where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
+    S: Fn(&T) -> N,
+    R: FnMut(&mut T, Rect<N>),
+{
+    let scale = scale(rect, items, &f_item_size);
+    let f_item_size_scaled = |item: &T| f_item_size(item) * scale;
+    let f_pivot = |items: &[T]| items.len() / 2;
+    _ordered_pivot(rect, items, &f_item_size_scaled, &mut f_item_set_rect, &f_pivot)
+}
+
+/// Distribute `items` inside `rect` by splitting it recursively around pivot by size in 4 areas
+///
+/// - `f_item_size` provide the size of an item
+/// - `f_item_set_rect` receive the item distributed Rect.
+///   Called once for each item and in a stable order.
+///
+/// __Complexity__: `O(items.len()^2)`
+pub fn ordered_pivot_by_size<N, T, S, R>(
+    rect: Rect<N>,
+    items: &mut [T],
+    f_item_size: S,
+    mut f_item_set_rect: R,
+) where
+    N: NumAssignOps + NumOps + PartialOrd + Zero + One + Copy + Sum,
+    S: Fn(&T) -> N,
+    R: FnMut(&mut T, Rect<N>),
+{
+    let scale = scale(rect, items, &f_item_size);
+    let f_item_size_scaled = |item: &T| f_item_size(item) * scale;
+    let f_pivot = |items: &[T]| {
+        items
+            .iter()
+            .enumerate()
+            .fold((0usize, N::zero()), |(idx_b, size_b), (idx, item)| {
+                let size_item = f_item_size(item);
+                if size_item > size_b {
+                    (idx, size_item)
+                } else {
+                    (idx_b, size_b)
+                }
+            })
+            .0
+    };
+    _ordered_pivot(rect, items, &f_item_size_scaled, &mut f_item_set_rect, &f_pivot)
+}
+
 #[cfg(test)]
 mod tests {
-    use std::fmt::Display;
+    use std::fmt::{Debug, Display};
+    use std::ops::Mul;
+
+    use num_traits::Signed;
 
     use super::*;
 
@@ -415,7 +557,29 @@ mod tests {
             .collect()
     }
 
-    fn mkset_rect<N>() -> impl FnMut(&mut (usize, N, Rect<N>), Rect<N>) {
+    const EPSILON: f32 = 0.000001;
+    fn mkset_rect11<N>(epsilon: N) -> impl FnMut(&mut (usize, N, Rect<N>), Rect<N>)
+    where
+        N: NumOps + Signed + PartialOrd + Copy + Debug,
+    {
+        let mut idx = 0;
+        move |(i, n, item_r), r| {
+            assert_eq!(*i, idx, "f_item_set_rect must be called in stable order");
+            let d = (r.w * r.h - *n).abs();
+            assert!(
+                d <= epsilon,
+                "item rect size must match size, n = {:?}, r = {:?}, d = {:?}",
+                *n,
+                r,
+                d,
+            );
+            *item_r = r;
+            idx += 1;
+        }
+    }
+
+    fn mkset_rect<N: Mul<Output = N> + PartialOrd + Copy + Debug>(
+    ) -> impl FnMut(&mut (usize, N, Rect<N>), Rect<N>) {
         let mut idx = 0;
         move |(i, _n, item_r), r| {
             assert_eq!(*i, idx, "f_item_set_rect must be called in stable order");
@@ -427,7 +591,12 @@ mod tests {
     #[test]
     fn binary_f32() {
         let mut slice = mkslice::<f32>(&[6., 6., 4., 3., 2., 2., 1.]);
-        binary(Rect { x: 0., y: 0., w: 6., h: 4. }, &mut slice[..], |&(_, n, _)| n, mkset_rect());
+        binary(
+            Rect { x: 0., y: 0., w: 6., h: 4. },
+            &mut slice[..],
+            |&(_, n, _)| n,
+            mkset_rect11(EPSILON),
+        );
         assert_eq!(
             slice,
             [
@@ -468,7 +637,7 @@ mod tests {
             Rect { x: 0., y: 0., w: 6., h: 4. },
             &mut slice[..],
             |&(_, n, _)| n,
-            mkset_rect(),
+            mkset_rect11(EPSILON),
         );
         assert_eq!(
             slice,
@@ -520,6 +689,100 @@ mod tests {
                 (4, 2.0, Rect { x: 7.0, y: 6.6666665, w: 2.3999999, h: 3.3333335 }),
                 (5, 2.0, Rect { x: 9.4, y: 6.6666665, w: 2.3999999, h: 3.3333335 }),
                 (6, 1.0, Rect { x: 11.799999, y: 6.6666665, w: 1.2000003, h: 3.3333335 })
+            ]
+        );
+    }
+
+    #[test]
+    fn ordered_pivot_by_middle_f32() {
+        let mut slice = mkslice::<f32>(&[6., 6., 4., 3., 2., 2., 1.]);
+        ordered_pivot_by_middle(
+            Rect { x: 0., y: 0., w: 6., h: 4. },
+            &mut slice[..],
+            |&(_, n, _)| n,
+            mkset_rect11(EPSILON),
+        );
+        eprintln!(
+            "<!-- ordered_pivot_by_middle -->\n{}",
+            svg(Rect { x: 0., y: 0., w: 6., h: 4. }, &slice[..], 50.0)
+        );
+        assert_eq!(
+            slice,
+            [
+                (0, 6.0, Rect { x: 0.0, y: 0.0, w: 1.5, h: 4.0 }),
+                (1, 6.0, Rect { x: 1.5, y: 0.0, w: 2.5, h: 2.4 }),
+                (2, 4.0, Rect { x: 1.5, y: 2.4, w: 2.5, h: 1.5999999 }),
+                (3, 3.0, Rect { x: 4.0, y: 0.0, w: 1.25, h: 2.4 }),
+                (4, 2.0, Rect { x: 4.0, y: 2.4, w: 1.25, h: 1.5999999 }),
+                (5, 2.0, Rect { x: 5.25, y: 0.0, w: 0.75, h: 2.6666667 }),
+                (6, 1.0, Rect { x: 5.25, y: 2.6666667, w: 0.75, h: 1.3333333 })
+            ]
+        );
+
+        let mut slice = mkslice::<f32>(&[12., 12., 8., 6., 4., 4., 2.]);
+        ordered_pivot_by_middle(
+            Rect { x: 0., y: 0., w: 6., h: 4. },
+            &mut slice[..],
+            |&(_, n, _)| n,
+            mkset_rect(),
+        );
+        assert_eq!(
+            slice,
+            [
+                (0, 12.0, Rect { x: 0.0, y: 0.0, w: 1.5, h: 4.0 }),
+                (1, 12.0, Rect { x: 1.5, y: 0.0, w: 2.5, h: 2.4 }),
+                (2, 8.0, Rect { x: 1.5, y: 2.4, w: 2.5, h: 1.5999999 }),
+                (3, 6.0, Rect { x: 4.0, y: 0.0, w: 1.25, h: 2.4 }),
+                (4, 4.0, Rect { x: 4.0, y: 2.4, w: 1.25, h: 1.5999999 }),
+                (5, 4.0, Rect { x: 5.25, y: 0.0, w: 0.75, h: 2.6666667 }),
+                (6, 2.0, Rect { x: 5.25, y: 2.6666667, w: 0.75, h: 1.3333333 })
+            ]
+        );
+    }
+
+    #[test]
+    fn ordered_pivot_by_size_f32() {
+        let mut slice = mkslice::<f32>(&[6., 6., 4., 3., 2., 2., 1.]);
+        ordered_pivot_by_size(
+            Rect { x: 0., y: 0., w: 6., h: 4. },
+            &mut slice[..],
+            |&(_, n, _)| n,
+            mkset_rect11(EPSILON),
+        );
+        eprintln!(
+            "<!-- ordered_pivot_by_size -->\n{}",
+            svg(Rect { x: 0., y: 0., w: 6., h: 4. }, &slice[..], 50.0)
+        );
+        assert_eq!(
+            slice,
+            [
+                (0, 6.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+                (1, 6.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+                (2, 4.0, Rect { x: 3.0, y: 0.0, w: 1.7142857, h: 2.3333333 }),
+                (3, 3.0, Rect { x: 4.714286, y: 0.0, w: 1.2857143, h: 2.3333333 }),
+                (4, 2.0, Rect { x: 3.0, y: 2.3333333, w: 2.3999999, h: 0.8333334 }),
+                (5, 2.0, Rect { x: 3.0, y: 3.1666665, w: 2.3999999, h: 0.8333334 }),
+                (6, 1.0, Rect { x: 5.3999996, y: 2.3333333, w: 0.60000014, h: 1.6666667 })
+            ]
+        );
+
+        let mut slice = mkslice::<f32>(&[12., 12., 8., 6., 4., 4., 2.]);
+        ordered_pivot_by_size(
+            Rect { x: 0., y: 0., w: 6., h: 4. },
+            &mut slice[..],
+            |&(_, n, _)| n,
+            mkset_rect(),
+        );
+        assert_eq!(
+            slice,
+            [
+                (0, 12.0, Rect { x: 0.0, y: 0.0, w: 3.0, h: 2.0 }),
+                (1, 12.0, Rect { x: 0.0, y: 2.0, w: 3.0, h: 2.0 }),
+                (2, 8.0, Rect { x: 3.0, y: 0.0, w: 1.7142857, h: 2.3333333 }),
+                (3, 6.0, Rect { x: 4.714286, y: 0.0, w: 1.2857143, h: 2.3333333 }),
+                (4, 4.0, Rect { x: 3.0, y: 2.3333333, w: 2.3999999, h: 0.8333334 }),
+                (5, 4.0, Rect { x: 3.0, y: 3.1666665, w: 2.3999999, h: 0.8333334 }),
+                (6, 2.0, Rect { x: 5.3999996, y: 2.3333333, w: 0.60000014, h: 1.6666667 })
             ]
         );
     }

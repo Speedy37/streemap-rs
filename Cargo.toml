@@ -18,5 +18,5 @@ num-traits = "0.2"
 criterion = "0.3"
 
 [[bench]]
-name = "bench"
+name = "criterion"
 harness = false
